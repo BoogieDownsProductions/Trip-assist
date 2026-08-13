@@ -251,23 +251,32 @@
   };
   const weatherCache = {};
 
+  let forecastCache = {}; // cache per city: full 16-day payload
+
   async function fetchLiveWeather(cityName, dateIso) {
     const coords = CITY_COORDS[cityName];
-    if (!coords) return null;
+    if (!coords) return { error: "No coordinates known for " + cityName };
     const cacheKey = cityName + dateIso;
     if (weatherCache[cacheKey]) return weatherCache[cacheKey];
-    const url = "https://api.open-meteo.com/v1/forecast?latitude=" + coords.lat + "&longitude=" + coords.lon +
-      "&daily=temperature_2m_max,temperature_2m_min,weathercode&timezone=auto&start_date=" + dateIso + "&end_date=" + dateIso;
+
     try {
-      const res = await fetch(url);
-      if (!res.ok) return { error: "HTTP " + res.status + " " + res.statusText };
-      const data = await res.json();
-      if (!data.daily || !data.daily.temperature_2m_max || data.daily.temperature_2m_max.length === 0) {
-        return { error: "No forecast data in response" };
+      let payload = forecastCache[cityName];
+      if (!payload) {
+        const url = "https://api.open-meteo.com/v1/forecast?latitude=" + coords.lat + "&longitude=" + coords.lon +
+          "&daily=temperature_2m_max,temperature_2m_min,weathercode&timezone=auto&forecast_days=16";
+        const res = await fetch(url);
+        if (!res.ok) return { error: "HTTP " + res.status + " " + res.statusText };
+        payload = await res.json();
+        forecastCache[cityName] = payload;
       }
-      const hi = Math.round(data.daily.temperature_2m_max[0]);
-      const lo = Math.round(data.daily.temperature_2m_min[0]);
-      const code = data.daily.weathercode[0];
+      if (!payload.daily || !payload.daily.time) return { error: "No forecast data in response" };
+      const idx = payload.daily.time.indexOf(dateIso);
+      if (idx === -1) {
+        return { error: "That date is beyond Open-Meteo's 16-day forecast horizon — check back closer to the trip" };
+      }
+      const hi = Math.round(payload.daily.temperature_2m_max[idx]);
+      const lo = Math.round(payload.daily.temperature_2m_min[idx]);
+      const code = payload.daily.weathercode[idx];
       const result = { hi, lo, cond: WMO[code] || "conditions unavailable" };
       weatherCache[cacheKey] = result;
       return result;
@@ -292,22 +301,29 @@
   };
 
   async function fetchLiveNews(cityName) {
-    if (!NEWS_API_KEY) return null;
+    if (!NEWS_API_KEY) return { error: "No API key set" };
     if (newsCache[cityName]) return newsCache[cityName];
     const url = "https://gnews.io/api/v4/search?q=" + encodeURIComponent(cityName) +
       "&lang=en&max=5&token=" + encodeURIComponent(NEWS_API_KEY);
     try {
       const res = await fetch(url);
-      if (!res.ok) return null;
+      if (!res.ok) {
+        let detail = "HTTP " + res.status + " " + res.statusText;
+        try {
+          const body = await res.json();
+          if (body && body.errors) detail += " — " + JSON.stringify(body.errors);
+        } catch (e2) { /* body wasn't JSON, ignore */ }
+        return { error: detail };
+      }
       const data = await res.json();
-      if (!data.articles) return null;
+      if (!data.articles) return { error: "Response had no articles field" };
       const items = data.articles.map((a) => ({
         headline: a.title, relevant: true, note: "Live result for " + cityName + ".",
       }));
       newsCache[cityName] = items;
       return items;
     } catch (e) {
-      return null;
+      return { error: (e && e.message) ? e.message : String(e) };
     }
   }
 
@@ -504,8 +520,9 @@
         if (mySelectionToken !== renderBrief._token) return;
         const newsSection = document.getElementById("newsSection");
         if (!newsSection) return;
-        let nhtml = '<div class="section-label">Local news' + (live ? '<span class="live-tag">live</span>' : '<span class="stub-tag">demo data</span>') + '</div>';
-        const items = live || STUB_NEWS[brief.leg.name] || [];
+        const isLive = Array.isArray(live);
+        let nhtml = '<div class="section-label">Local news' + (isLive ? '<span class="live-tag">live</span>' : '<span class="stub-tag">demo data</span>') + '</div>';
+        const items = isLive ? live : (STUB_NEWS[brief.leg.name] || []);
         const relevant = items.filter((n) => n.relevant);
         const filtered = items.filter((n) => !n.relevant);
         if (relevant.length > 0) {
@@ -521,10 +538,11 @@
           });
           nhtml += '</div>';
         }
-        if (!live && !NEWS_API_KEY) {
+        if (!isLive && !NEWS_API_KEY) {
           nhtml += '<p class="muted" style="margin-top:10px;">Add a News API key in Settings to fetch this live.</p>';
-        } else if (!live && NEWS_API_KEY) {
-          nhtml += '<p class="muted" style="margin-top:10px;">Live fetch failed (key issue or the provider blocked this request) \u2014 showing demo data instead.</p>';
+        } else if (!isLive) {
+          const errMsg = (live && live.error) ? live.error : "unknown error";
+          nhtml += '<p class="muted" style="margin-top:10px;">Live fetch error: ' + esc(errMsg) + ' \u2014 showing demo data instead.</p>';
         }
         newsSection.innerHTML = nhtml;
       });
