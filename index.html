@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Nudge Engine — Morning Brief</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  #app {
+    background: #101214 !important; color: #F5F3EE;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    min-height: 100vh; display: flex; flex-direction: column;
+  }
+  .header {
+    border-bottom: 1px solid #34383D; padding: 16px 24px;
+    display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+  }
+  .eyebrow { font-size: 11px; letter-spacing: 0.2em; color: #E2664A; text-transform: uppercase; }
+  .title { font-size: 20px; font-weight: 700; margin: 0; }
+  .header-right { font-size: 12px; color: #9FC7C3; text-align: right; line-height: 1.5; }
+  .header-btns { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .edit-btn {
+    font-family: inherit; font-size: 12px; color: #101214; background: #E8A33D;
+    border: none; border-radius: 3px; padding: 8px 14px; cursor: pointer; font-weight: 700;
+  }
+  .edit-btn.secondary { background: #9FC7C3; }
+
+  .scrubber { border-bottom: 1px solid #34383D; padding: 12px 24px; overflow-x: auto; }
+  .scrubber-inner { display: flex; gap: 4px; min-width: max-content; }
+  .day-btn {
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+    width: 44px; height: 68px; border-radius: 3px;
+    border: 1px solid #34383D; background: #1E2125; color: #C7CACD;
+    cursor: pointer; padding: 6px 0; font-family: inherit; position: relative;
+  }
+  .day-btn.active { border-color: #E8A33D; background: #E8A33D; color: #101214; }
+  .day-btn .dow { font-size: 10px; line-height: 1; margin-bottom: 4px; }
+  .day-btn .num { font-size: 14px; font-weight: 700; line-height: 1; }
+  .day-btn .dots { display: flex; gap: 2px; margin-top: 4px; }
+  .day-btn .dot { height: 5px; width: 5px; border-radius: 50%; background: transparent; }
+  .day-btn.gap .dot.gap-dot { background: #E2664A; }
+  .day-btn.gap.active .dot.gap-dot { background: #101214; }
+  .day-btn .dot.event-dot { background: #6FA8FF; }
+  .day-btn.active .dot.event-dot { background: #101214; }
+
+  .brief { flex: 1; padding: 32px 24px; max-width: 640px; }
+  .brief p { font-size: 18px; line-height: 1.6; margin: 0 0 20px 0; color: #F5F3EE; }
+  .accent-amber { color: #E8A33D; font-weight: 700; }
+  .accent-red { color: #FF7A5C; font-weight: 700; }
+  .bold { font-weight: 700; }
+
+  .gap-box {
+    border: 1px solid rgba(226,102,74,0.5); background: rgba(226,102,74,0.12);
+    border-radius: 4px; padding: 12px 16px; margin-bottom: 20px;
+  }
+  .gap-box-label {
+    display: flex; align-items: center; gap: 8px; color: #FF9478; font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; font-weight: 700;
+  }
+  .gap-box-line { font-size: 14px; margin-bottom: 4px; color: #F5F3EE; }
+  .muted { font-size: 14px; color: #B7BABE; }
+  .subtext { font-size: 14px; color: #D2D4D7; margin-bottom: 20px; }
+
+  .row { display: flex; align-items: center; gap: 8px; font-size: 14px; color: #D2D4D7; margin-bottom: 16px; }
+  .section-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #9FC7C3;
+    margin-bottom: 8px; font-weight: 700; margin-top: 24px;
+  }
+  .section-label:first-of-type { margin-top: 0; }
+  .news-item { font-size: 14px; padding: 4px 0 4px 12px; border-left: 2px solid #E8A33D; margin-bottom: 8px; color: #F5F3EE; }
+  .filtered-toggle { margin-top: 12px; font-size: 12px; color: #9FA2A6; cursor: pointer; }
+  .filtered-body { margin-top: 8px; padding-left: 16px; display: none; flex-direction: column; gap: 8px; }
+  .filtered-body.open { display: flex; }
+  .filtered-headline { text-decoration: line-through; opacity: 0.7; }
+  .filtered-note { opacity: 0.9; font-size: 12px; color: #B7BABE; }
+  .live-tag { font-size: 10px; color: #6FA8FF; text-transform: uppercase; letter-spacing: 0.05em; margin-left: 8px; }
+  .stub-tag { font-size: 10px; color: #9FA2A6; text-transform: uppercase; letter-spacing: 0.05em; margin-left: 8px; }
+
+  .event-item {
+    display: flex; align-items: flex-start; gap: 10px; font-size: 14px;
+    padding: 8px 0; border-bottom: 1px solid #24272B; color: #F5F3EE;
+  }
+  .event-item:last-child { border-bottom: none; }
+  .event-time { color: #9FC7C3; font-size: 12px; min-width: 44px; }
+  .event-icon { font-size: 15px; }
+
+  .footer {
+    border-top: 1px solid #34383D; padding: 12px 24px; font-size: 11px; color: #9FA2A6;
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  }
+  .legend-dot { height: 6px; width: 6px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+
+  .editor { display: none; border-bottom: 1px solid #34383D; padding: 20px 24px; background: #16181B; }
+  .editor.open { display: block; }
+  .editor h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: #9FC7C3; margin: 0 0 14px 0; }
+  .editor h2:not(:first-child) { margin-top: 22px; }
+  .editor .hint { font-size: 12px; color: #9FA2A6; margin-bottom: 12px; line-height: 1.5; }
+  .editor a { color: #9FC7C3; }
+
+  .leg-row {
+    display: grid; grid-template-columns: 1.2fr 1fr 1fr 1.2fr auto;
+    gap: 8px; align-items: center; margin-bottom: 8px;
+  }
+  .event-row {
+    display: grid; grid-template-columns: 1fr 0.8fr 1.6fr 1fr auto;
+    gap: 8px; align-items: center; margin-bottom: 8px;
+  }
+  .key-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
+  .editor input, .editor select {
+    font-family: inherit; font-size: 13px; background: #101214; color: #F5F3EE;
+    border: 1px solid #34383D; border-radius: 3px; padding: 8px; width: 100%;
+  }
+  .editor input::placeholder { color: #7A7D80; }
+  .leg-del {
+    font-family: inherit; font-size: 12px; color: #FF9478; background: transparent;
+    border: 1px solid #4A2C24; border-radius: 3px; padding: 8px 10px; cursor: pointer;
+  }
+  .editor-actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+  .add-btn, .save-btn {
+    font-family: inherit; font-size: 13px; border-radius: 3px; padding: 9px 16px;
+    cursor: pointer; font-weight: 700; border: none;
+  }
+  .add-btn { background: #1E2125; color: #F5F3EE; border: 1px solid #34383D; }
+  .save-btn { background: #E8A33D; color: #101214; }
+  .col-label { font-size: 10px; text-transform: uppercase; color: #7A7D80; letter-spacing: 0.05em; }
+  .col-labels-leg { display: grid; grid-template-columns: 1.2fr 1fr 1fr 1.2fr auto; gap: 8px; margin-bottom: 6px; }
+  .col-labels-event { display: grid; grid-template-columns: 1fr 0.8fr 1.6fr 1fr auto; gap: 8px; margin-bottom: 6px; }
+</style>
+</head>
+<body>
+<div id="app">
+<div class="header">
+  <div>
+    <div class="eyebrow">Nudge Engine</div>
+    <h1 class="title">Morning Brief — Flight Log</h1>
+  </div>
+  <div class="header-btns">
+    <div class="header-right">UK/Europe Aug 2026<br/>Today: Aug 13</div>
+    <button class="edit-btn secondary" id="toggleSettings">API settings</button>
+    <button class="edit-btn" id="toggleEditor">Edit trip</button>
+  </div>
+</div>
+
+<div class="editor" id="settings">
+  <h2>News API key</h2>
+  <div class="hint">
+    Weather is live already (Open-Meteo, no key needed). For live local news, sign up free at
+    <a href="https://gnews.io" target="_blank" rel="noopener">gnews.io</a> and paste your key below.
+    Some providers block direct requests from a browser like this one — if that happens you'll see
+    a note and it'll fall back to demo data instead of breaking.
+  </div>
+  <div class="key-row">
+    <input id="newsKeyInput" placeholder="GNews API key (optional)" />
+    <button class="save-btn" id="saveKey">Save</button>
+  </div>
+</div>
+
+<div class="editor" id="editor">
+  <h2>Stays</h2>
+  <div class="col-labels-leg">
+    <span class="col-label">City</span><span class="col-label">Check-in</span>
+    <span class="col-label">Check-out</span><span class="col-label">Hotel</span><span></span>
+  </div>
+  <div id="legRows"></div>
+  <div class="editor-actions">
+    <button class="add-btn" id="addLeg">+ Add stay</button>
+  </div>
+
+  <h2>Bookings &amp; activities</h2>
+  <div class="col-labels-event">
+    <span class="col-label">Date</span><span class="col-label">Time</span>
+    <span class="col-label">Title</span><span class="col-label">Type</span><span></span>
+  </div>
+  <div id="eventRows"></div>
+  <div class="editor-actions">
+    <button class="add-btn" id="addEvent">+ Add booking / activity</button>
+    <button class="save-btn" id="saveAll">Save changes</button>
+  </div>
+</div>
+
+<div class="scrubber">
+  <div class="scrubber-inner" id="scrubber"></div>
+</div>
+
+<div class="brief" id="brief"></div>
+
+<div class="footer">
+  <span><span class="legend-dot" style="background:#E2664A;"></span>gap night</span>
+  <span><span class="legend-dot" style="background:#6FA8FF;"></span>booking that day</span>
+  <span>Weather is live (Open-Meteo). News is live if you add an API key, demo data otherwise.</span>
+</div>
+</div>
+
+<script>
+  let LEGS = [
+    { name: "London", start: "2026-08-20", end: "2026-08-20", hotel: "Sorted (details TBD)" },
+    { name: "Somerset", start: "2026-08-21", end: "2026-08-22", hotel: "Mandy & Nick's (Airbnb)" },
+    { name: "Somerset", start: "2026-08-23", end: "2026-08-23", hotel: "Oak House (booked by Tracy, 15:00\u201311:00)" },
+    { name: "Prague", start: "2026-08-24", end: "2026-08-26", hotel: "DOMINICAN Hotel, Old Town" },
+    { name: "Amsterdam", start: "2026-08-27", end: "2026-08-28", hotel: "Zoku" },
+    { name: "Manchester", start: "2026-08-29", end: "2026-08-29", hotel: "Dakota Hotel (booked by Tracy)" },
+    { name: "Heathrow", start: "2026-08-30", end: "2026-08-30", hotel: "Premier Inn Heathrow T4" },
+  ];
+
+  let EVENTS = [
+    { date: "2026-08-20", time: "", title: "Fly to London", type: "flight" },
+    { date: "2026-08-21", time: "", title: "Drive to Somerset", type: "transport" },
+    { date: "2026-08-22", time: "", title: "Wedding", type: "activity" },
+    { date: "2026-08-23", time: "", title: "Recovery day", type: "activity" },
+    { date: "2026-08-24", time: "13:20", title: "Flight EZY2935 \u00B7 BRS 13:20 \u2192 PRG 16:20", type: "flight" },
+    { date: "2026-08-24", time: "19:00", title: "Metro Comedy Club (English stand-up)", type: "activity" },
+    { date: "2026-08-25", time: "", title: "Klementinum Antique Market", type: "activity" },
+    { date: "2026-08-25", time: "", title: "Mig 21 concert \u2014 Are\u00E1l 7", type: "activity" },
+    { date: "2026-08-25", time: "", title: "Speakeasy: Beyond The Bar or Black Angel's", type: "activity" },
+    { date: "2026-08-26", time: "", title: "Havel's Market", type: "activity" },
+    { date: "2026-08-26", time: "", title: "Vojt\u011Bch Dyk & D.Y.K. concert \u2014 Are\u00E1l 7", type: "activity" },
+    { date: "2026-08-26", time: "", title: "Speakeasy: Anonymous Bar", type: "activity" },
+    { date: "2026-08-27", time: "16:20", title: "Flight EJU7930 \u00B7 PRG 16:20 \u2192 AMS 17:50", type: "flight" },
+    { date: "2026-08-27", time: "20:00", title: "Boom Chicago comedy \u2014 Rozentheater", type: "activity" },
+    { date: "2026-08-28", time: "", title: "Speakeasy: Hiding in Plain Sight or Bar Mokum", type: "activity" },
+    { date: "2026-08-28", time: "", title: "Boom Chicago comedy (alt night)", type: "activity" },
+    { date: "2026-08-29", time: "10:00", title: "Relaxed morning / checkout at Zoku", type: "activity" },
+    { date: "2026-08-29", time: "14:50", title: "Flight EZY2166 \u00B7 AMS 14:50 \u2192 MAN 15:10", type: "flight" },
+    { date: "2026-08-29", time: "21:00", title: "The Fitzgerald \u2014 Northern Quarter speakeasy (live jazz & burlesque)", type: "activity" },
+    { date: "2026-08-30", time: "13:45", title: "Coronation Street Star Tour \u2014 MediaCityUK", type: "activity" },
+    { date: "2026-08-30", time: "", title: "Train: Manchester \u2192 Piccadilly \u2192 Avanti to Euston (~2h05\u20132h15m)", type: "transport" },
+    { date: "2026-08-30", time: "", title: "Tube: Northern line \u2192 Tottenham Court Rd \u2192 Elizabeth line to Heathrow T4", type: "transport" },
+    { date: "2026-08-31", time: "12:00", title: "Fly home (noon departure)", type: "flight" },
+  ];
+
+  const TYPE_ICON = { flight: "\u2708", hotel: "\uD83C\uDFE8", activity: "\uD83C\uDF9F", transport: "\uD83D\uDE97", other: "\uD83D\uDCCC" };
+
+  // ---------- Live weather (Open-Meteo, no API key required) ----------
+  const CITY_COORDS = {
+    London: { lat: 51.5074, lon: -0.1278 },
+    Somerset: { lat: 51.0158, lon: -3.1058 },
+    Prague: { lat: 50.0755, lon: 14.4378 },
+    Amsterdam: { lat: 52.3676, lon: 4.9041 },
+    Manchester: { lat: 53.4808, lon: -2.2426 },
+    Heathrow: { lat: 51.4700, lon: -0.4543 },
+  };
+  const WMO = {
+    0: "clear sky", 1: "mainly clear", 2: "partly cloudy", 3: "overcast",
+    45: "fog", 48: "depositing rime fog",
+    51: "light drizzle", 53: "drizzle", 55: "dense drizzle",
+    61: "light rain", 63: "rain", 65: "heavy rain",
+    71: "light snow", 73: "snow", 75: "heavy snow",
+    80: "rain showers", 81: "rain showers", 82: "violent rain showers",
+    95: "thunderstorm",
+  };
+  const weatherCache = {};
+
+  async function fetchLiveWeather(cityName, dateIso) {
+    const coords = CITY_COORDS[cityName];
+    if (!coords) return null;
+    const cacheKey = cityName + dateIso;
+    if (weatherCache[cacheKey]) return weatherCache[cacheKey];
+    const url = "https://api.open-meteo.com/v1/forecast?latitude=" + coords.lat + "&longitude=" + coords.lon +
+      "&daily=temperature_2m_max,temperature_2m_min,weathercode&timezone=auto&start_date=" + dateIso + "&end_date=" + dateIso;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return { error: "HTTP " + res.status + " " + res.statusText };
+      const data = await res.json();
+      if (!data.daily || !data.daily.temperature_2m_max || data.daily.temperature_2m_max.length === 0) {
+        return { error: "No forecast data in response" };
+      }
+      const hi = Math.round(data.daily.temperature_2m_max[0]);
+      const lo = Math.round(data.daily.temperature_2m_min[0]);
+      const code = data.daily.weathercode[0];
+      const result = { hi, lo, cond: WMO[code] || "conditions unavailable" };
+      weatherCache[cacheKey] = result;
+      return result;
+    } catch (e) {
+      return { error: (e && e.message) ? e.message : String(e) };
+    }
+  }
+
+  // ---------- Live news (GNews, requires a free API key) ----------
+  let NEWS_API_KEY = "";
+  const newsCache = {};
+
+  const STUB_NEWS = {
+    Prague: [
+      { headline: "Small fire reported at a warehouse in Uxbridge", relevant: false, note: "Uxbridge is in London, not near Prague." },
+      { headline: "Tram delays on Prague line 22 due to maintenance", relevant: true, note: "Same city — worth knowing." },
+    ],
+    Amsterdam: [
+      { headline: "Canal-side road closures near Centraal for a film shoot", relevant: true, note: "Same city — could affect walking routes." },
+    ],
+    Manchester: [], Somerset: [], London: [], Heathrow: [],
+  };
+
+  async function fetchLiveNews(cityName) {
+    if (!NEWS_API_KEY) return null;
+    if (newsCache[cityName]) return newsCache[cityName];
+    const url = "https://gnews.io/api/v4/search?q=" + encodeURIComponent(cityName) +
+      "&lang=en&max=5&token=" + encodeURIComponent(NEWS_API_KEY);
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (!data.articles) return null;
+      const items = data.articles.map((a) => ({
+        headline: a.title, relevant: true, note: "Live result for " + cityName + ".",
+      }));
+      newsCache[cityName] = items;
+      return items;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  const WEATHER_FALLBACK = {
+    London: { temp: 18, cond: "partly cloudy" },
+    Somerset: { temp: 17, cond: "partly cloudy" },
+    Prague: { temp: 12, cond: "overcast" },
+    Amsterdam: { temp: 15, cond: "light rain" },
+    Manchester: { temp: 14, cond: "cloudy" },
+    Heathrow: { temp: 17, cond: "cloudy" },
+  };
+
+  const TODAY = new Date("2026-08-13T00:00:00");
+
+  function toDate(s) { return new Date(s + "T00:00:00"); }
+  function isoOf(d) { return d.toISOString().slice(0, 10); }
+  function daysBetween(a, b) { return Math.round((b - a) / 86400000); }
+  function fmt(d) { return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }); }
+
+  function sortedLegs() { return [...LEGS].sort((a, b) => toDate(a.start) - toDate(b.start)); }
+  function tripStart() { return sortedLegs().length ? toDate(sortedLegs()[0].start) : new Date(TODAY); }
+
+  function overallEnd() {
+    let end = tripStart();
+    LEGS.forEach((l) => { const e = toDate(l.end); if (e > end) end = e; });
+    EVENTS.forEach((ev) => { const e = toDate(ev.date); if (e > end) end = e; });
+    return end;
+  }
+  function overallStartForScrubber() { return TODAY; }
+
+  function legForDate(d) {
+    return LEGS.find((l) => toDate(l.start) <= d && d <= toDate(l.end)) || null;
+  }
+  function eventsForDate(d) {
+    const iso = isoOf(d);
+    return EVENTS.filter((ev) => ev.date === iso).sort((a, b) => (a.time || "99:99").localeCompare(b.time || "99:99"));
+  }
+
+  function findGaps() {
+    const sorted = sortedLegs();
+    if (!sorted.length) return [];
+    const gaps = [];
+    let cursor = toDate(sorted[0].start);
+    for (const leg of sorted) {
+      const legStart = toDate(leg.start);
+      if (legStart > cursor) {
+        const gapEnd = new Date(legStart); gapEnd.setDate(gapEnd.getDate() - 1);
+        gaps.push({ start: new Date(cursor), end: gapEnd });
+      }
+      const legEnd = toDate(leg.end); legEnd.setDate(legEnd.getDate() + 1);
+      if (legEnd > cursor) cursor = legEnd;
+    }
+    return gaps;
+  }
+  function isGapNight(d, gaps) { return gaps.some((g) => g.start <= d && d <= g.end); }
+
+  function buildDayList() {
+    const days = [];
+    let cursor = new Date(overallStartForScrubber());
+    const end = overallEnd();
+    while (cursor <= end) { days.push(new Date(cursor)); cursor.setDate(cursor.getDate() + 1); }
+    return days;
+  }
+
+  let DAY_LIST = buildDayList();
+  let GAPS = findGaps();
+  let selectedIdx = 0;
+
+  function buildBrief(selected) {
+    const daysOut = daysBetween(TODAY, selected);
+    const leg = legForDate(selected);
+    const dayEvents = eventsForDate(selected);
+    const gapNight = isGapNight(selected, GAPS) && selected >= tripStart();
+
+    let head;
+    if (daysOut > 0 && selected < tripStart()) {
+      head = { kind: "pretrip", daysOut, gaps: GAPS.map((g) => ({
+        text: g.start.getTime() === g.end.getTime()
+          ? fmt(g.start) + " has no confirmed stay."
+          : fmt(g.start) + "\u2013" + fmt(g.end) + " has no confirmed stay.",
+      })) };
+    } else if (gapNight) {
+      head = { kind: "gapday", tripDay: daysBetween(tripStart(), selected) + 1 };
+    } else if (leg) {
+      const tripDay = daysBetween(tripStart(), selected) + 1;
+      const dayInLeg = daysBetween(toDate(leg.start), selected) + 1;
+      head = { kind: "ontrip", tripDay, dayInLeg, leg };
+    } else if (selected >= tripStart() && selected <= overallEnd()) {
+      const lastStayEnd = sortedLegs().length ? sortedLegs().reduce((m, l) => { const e = toDate(l.end); return e > m ? e : m; }, toDate(sortedLegs()[0].end)) : null;
+      if (lastStayEnd && selected > lastStayEnd) {
+        head = { kind: "traveldayhome", tripDay: daysBetween(tripStart(), selected) + 1 };
+      } else {
+        head = { kind: "gapday", tripDay: daysBetween(tripStart(), selected) + 1 };
+      }
+    } else {
+      head = { kind: "over" };
+    }
+
+    head.dayEvents = dayEvents;
+    return head;
+  }
+
+  function renderScrubber() {
+    const el = document.getElementById("scrubber");
+    el.innerHTML = "";
+    DAY_LIST.forEach((d, i) => {
+      const gap = isGapNight(d, GAPS) && d >= tripStart();
+      const hasEvents = eventsForDate(d).length > 0;
+      const active = i === selectedIdx;
+      const btn = document.createElement("button");
+      btn.className = "day-btn" + (active ? " active" : "") + (gap ? " gap" : "");
+      btn.innerHTML =
+        '<span class="dow">' + d.toLocaleDateString("en-US", { weekday: "short" }) + '</span>' +
+        '<span class="num">' + d.getDate() + '</span>' +
+        '<span class="dots">' +
+          (gap ? '<span class="dot gap-dot"></span>' : '') +
+          (hasEvents ? '<span class="dot event-dot"></span>' : '') +
+        '</span>';
+      btn.onclick = () => { selectedIdx = i; renderScrubber(); renderBrief(); };
+      el.appendChild(btn);
+    });
+  }
+
+  function esc(s) { const div = document.createElement("div"); div.textContent = s; return div.innerHTML; }
+
+  function eventsHtml(dayEvents) {
+    if (!dayEvents.length) return "";
+    let html = '<div class="section-label">Bookings today</div>';
+    dayEvents.forEach((ev) => {
+      html += '<div class="event-item"><span class="event-icon">' + (TYPE_ICON[ev.type] || TYPE_ICON.other) + '</span>' +
+        '<span class="event-time">' + esc(ev.time || "") + '</span>' +
+        '<span>' + esc(ev.title) + '</span></div>';
+    });
+    return html;
+  }
+
+  function renderBrief() {
+    if (selectedIdx >= DAY_LIST.length) selectedIdx = DAY_LIST.length - 1;
+    if (selectedIdx < 0) selectedIdx = 0;
+    const mySelectionToken = ++renderBrief._token || (renderBrief._token = 1);
+    const selected = DAY_LIST[selectedIdx];
+    const brief = buildBrief(selected);
+    const el = document.getElementById("brief");
+    let html = "";
+
+    if (brief.kind === "pretrip") {
+      html += '<p>Morning Mike. <span class="accent-amber">' + brief.daysOut + ' days out</span> from the trip.</p>';
+      if (brief.gaps.length > 0) {
+        html += '<div class="gap-box"><div class="gap-box-label">\u26A0 Gaps in the plan</div>';
+        brief.gaps.forEach((g) => { html += '<div class="gap-box-line">' + esc(g.text) + '</div>'; });
+        html += '</div>';
+      } else {
+        html += '<p class="muted">Stays are fully covered, no gaps between legs.</p>';
+      }
+      html += eventsHtml(brief.dayEvents);
+      el.innerHTML = html;
+      return;
+    } else if (brief.kind === "gapday") {
+      html += '<p>Morning Mike. Day ' + brief.tripDay + ' of the trip — <span class="accent-red">no confirmed stay tonight.</span></p>';
+      html += '<p class="subtext">This is one of the gaps flagged earlier. Might be worth locking down before you\'re standing in a station figuring it out.</p>';
+      html += eventsHtml(brief.dayEvents);
+      el.innerHTML = html;
+      return;
+    } else if (brief.kind === "traveldayhome") {
+      html += '<p>Morning Mike. Day ' + brief.tripDay + ' of the trip — heading home today.</p>';
+      html += '<p class="subtext">No stay booked tonight because you\'re not sleeping in Europe — this is the travel-home day.</p>';
+      html += eventsHtml(brief.dayEvents);
+      el.innerHTML = html;
+      return;
+    } else if (brief.kind === "ontrip") {
+      html += '<p>Morning Mike. Day <span class="accent-amber">' + brief.tripDay + '</span> of the trip — day ' + brief.dayInLeg + ' in <span class="bold">' + esc(brief.leg.name) + '</span>.</p>';
+      if (brief.leg.hotel) html += '<div class="row">\uD83D\uDCCD ' + esc(brief.leg.hotel) + '</div>';
+      html += '<div class="row" id="wxRow">\u2601 Checking live weather\u2026</div>';
+      html += '<div id="newsSection"><div class="section-label">Local news</div><p class="muted" id="newsBody">Checking live news\u2026</p></div>';
+      el.innerHTML = html;
+
+      // Live weather fetch
+      fetchLiveWeather(brief.leg.name, isoOf(selected)).then((wx) => {
+        if (mySelectionToken !== renderBrief._token) return; // user moved on, don't overwrite
+        const wxEl = document.getElementById("wxRow");
+        if (!wxEl) return;
+        if (wx && !wx.error) {
+          wxEl.innerHTML = '\u2601 ' + wx.hi + '\u00B0C / ' + wx.lo + '\u00B0C, ' + wx.cond + '<span class="live-tag">live</span>';
+        } else {
+          const fb = WEATHER_FALLBACK[brief.leg.name] || { temp: "\u2014", cond: "no forecast available" };
+          const errMsg = (wx && wx.error) ? wx.error : "unknown error";
+          wxEl.innerHTML = '\u2601 ' + fb.temp + (typeof fb.temp === "number" ? "\u00B0C" : "") + ', ' + fb.cond +
+            '<span class="stub-tag">demo data</span><div class="filtered-note" style="margin-top:4px;">Live fetch error: ' + esc(errMsg) + '</div>';
+        }
+      });
+
+      // Live news fetch
+      fetchLiveNews(brief.leg.name).then((live) => {
+        if (mySelectionToken !== renderBrief._token) return;
+        const newsSection = document.getElementById("newsSection");
+        if (!newsSection) return;
+        let nhtml = '<div class="section-label">Local news' + (live ? '<span class="live-tag">live</span>' : '<span class="stub-tag">demo data</span>') + '</div>';
+        const items = live || STUB_NEWS[brief.leg.name] || [];
+        const relevant = items.filter((n) => n.relevant);
+        const filtered = items.filter((n) => !n.relevant);
+        if (relevant.length > 0) {
+          relevant.forEach((n) => { nhtml += '<div class="news-item">' + esc(n.headline) + '</div>'; });
+        } else {
+          nhtml += '<p class="muted">Nothing notable near you today.</p>';
+        }
+        if (filtered.length > 0) {
+          nhtml += '<div class="filtered-toggle" onclick="this.nextElementSibling.classList.toggle(\'open\')">\u26F2 ' + filtered.length + ' item(s) filtered out \u2014 tap to see why</div>';
+          nhtml += '<div class="filtered-body">';
+          filtered.forEach((n) => {
+            nhtml += '<div><span class="filtered-headline">' + esc(n.headline) + '</span><div class="filtered-note">' + esc(n.note) + '</div></div>';
+          });
+          nhtml += '</div>';
+        }
+        if (!live && !NEWS_API_KEY) {
+          nhtml += '<p class="muted" style="margin-top:10px;">Add a News API key in Settings to fetch this live.</p>';
+        } else if (!live && NEWS_API_KEY) {
+          nhtml += '<p class="muted" style="margin-top:10px;">Live fetch failed (key issue or the provider blocked this request) \u2014 showing demo data instead.</p>';
+        }
+        newsSection.innerHTML = nhtml;
+      });
+      return;
+    } else {
+      html += '<p class="muted">Nothing scheduled beyond the current trip window.</p>';
+      html += eventsHtml(brief.dayEvents);
+      el.innerHTML = html;
+      return;
+    }
+  }
+
+  // ---------- Editor ----------
+
+  function renderLegEditor() {
+    const rowsEl = document.getElementById("legRows");
+    rowsEl.innerHTML = "";
+    LEGS.forEach((leg, i) => {
+      const row = document.createElement("div");
+      row.className = "leg-row";
+      row.innerHTML =
+        '<input data-i="' + i + '" data-f="name" value="' + esc(leg.name) + '" placeholder="City" />' +
+        '<input data-i="' + i + '" data-f="start" type="date" value="' + leg.start + '" />' +
+        '<input data-i="' + i + '" data-f="end" type="date" value="' + leg.end + '" />' +
+        '<input data-i="' + i + '" data-f="hotel" value="' + esc(leg.hotel || "") + '" placeholder="Hotel (optional)" />' +
+        '<button class="leg-del" data-i="' + i + '">Remove</button>';
+      rowsEl.appendChild(row);
+    });
+    rowsEl.querySelectorAll("input").forEach((inp) => {
+      inp.onchange = (e) => { LEGS[+e.target.dataset.i][e.target.dataset.f] = e.target.value; };
+    });
+    rowsEl.querySelectorAll(".leg-del").forEach((btn) => {
+      btn.onclick = (e) => { LEGS.splice(+e.target.dataset.i, 1); renderLegEditor(); };
+    });
+  }
+
+  function renderEventEditor() {
+    const rowsEl = document.getElementById("eventRows");
+    rowsEl.innerHTML = "";
+    EVENTS.forEach((ev, i) => {
+      const row = document.createElement("div");
+      row.className = "event-row";
+      const typeOptions = ["flight", "hotel", "activity", "transport", "other"]
+        .map((t) => '<option value="' + t + '"' + (t === ev.type ? " selected" : "") + '>' + t + '</option>').join("");
+      row.innerHTML =
+        '<input data-i="' + i + '" data-f="date" type="date" value="' + ev.date + '" />' +
+        '<input data-i="' + i + '" data-f="time" type="time" value="' + (ev.time || "") + '" />' +
+        '<input data-i="' + i + '" data-f="title" value="' + esc(ev.title) + '" placeholder="e.g. Flight Halifax \u2192 London" />' +
+        '<select data-i="' + i + '" data-f="type">' + typeOptions + '</select>' +
+        '<button class="leg-del" data-i="' + i + '">Remove</button>';
+      rowsEl.appendChild(row);
+    });
+    rowsEl.querySelectorAll("input, select").forEach((inp) => {
+      inp.onchange = (e) => { EVENTS[+e.target.dataset.i][e.target.dataset.f] = e.target.value; };
+    });
+    rowsEl.querySelectorAll(".leg-del").forEach((btn) => {
+      btn.onclick = (e) => { EVENTS.splice(+e.target.dataset.i, 1); renderEventEditor(); };
+    });
+  }
+
+  document.getElementById("toggleEditor").onclick = () => {
+    document.getElementById("editor").classList.toggle("open");
+    document.getElementById("settings").classList.remove("open");
+    renderLegEditor(); renderEventEditor();
+  };
+  document.getElementById("toggleSettings").onclick = () => {
+    document.getElementById("settings").classList.toggle("open");
+    document.getElementById("editor").classList.remove("open");
+  };
+  document.getElementById("addLeg").onclick = () => {
+    LEGS.push({ name: "New stay", start: "2026-08-23", end: "2026-08-23", hotel: "" });
+    renderLegEditor();
+  };
+  document.getElementById("addEvent").onclick = () => {
+    EVENTS.push({ date: "2026-08-20", time: "", title: "New booking", type: "other" });
+    renderEventEditor();
+  };
+  document.getElementById("saveAll").onclick = () => {
+    LEGS = LEGS.filter((l) => l.name && l.start && l.end);
+    EVENTS = EVENTS.filter((e) => e.date && e.title);
+    DAY_LIST = buildDayList();
+    GAPS = findGaps();
+    selectedIdx = 0;
+    renderScrubber(); renderBrief();
+    document.getElementById("editor").classList.remove("open");
+  };
+  document.getElementById("saveKey").onclick = async () => {
+    NEWS_API_KEY = document.getElementById("newsKeyInput").value.trim();
+    try {
+      if (window.storage) await window.storage.set("gnewsApiKey", NEWS_API_KEY, false);
+    } catch (e) { /* storage optional, ignore failure */ }
+    document.getElementById("settings").classList.remove("open");
+    renderBrief();
+  };
+
+  async function init() {
+    try {
+      if (window.storage) {
+        const stored = await window.storage.get("gnewsApiKey");
+        if (stored && stored.value) {
+          NEWS_API_KEY = stored.value;
+          document.getElementById("newsKeyInput").value = stored.value;
+        }
+      }
+    } catch (e) { /* no stored key yet, that's fine */ }
+    renderLegEditor(); renderEventEditor();
+    renderScrubber(); renderBrief();
+  }
+
+  init();
+</script>
+
+</body>
+</html>
