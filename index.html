@@ -611,23 +611,21 @@
     renderScrubber(); renderBrief();
     document.getElementById("editor").classList.remove("open");
   };
-  document.getElementById("saveKey").onclick = async () => {
+  document.getElementById("saveKey").onclick = () => {
     NEWS_API_KEY = document.getElementById("newsKeyInput").value.trim();
     try {
-      if (window.storage) await window.storage.set("gnewsApiKey", NEWS_API_KEY, false);
-    } catch (e) { /* storage optional, ignore failure */ }
+      localStorage.setItem("gnewsApiKey", NEWS_API_KEY);
+    } catch (e) { /* localStorage unavailable (private browsing etc.), key still works for this session */ }
     document.getElementById("settings").classList.remove("open");
     renderBrief();
   };
 
-  async function init() {
+  function init() {
     try {
-      if (window.storage) {
-        const stored = await window.storage.get("gnewsApiKey");
-        if (stored && stored.value) {
-          NEWS_API_KEY = stored.value;
-          document.getElementById("newsKeyInput").value = stored.value;
-        }
+      const stored = localStorage.getItem("gnewsApiKey");
+      if (stored) {
+        NEWS_API_KEY = stored;
+        document.getElementById("newsKeyInput").value = stored;
       }
     } catch (e) { /* no stored key yet, that's fine */ }
     renderLegEditor(); renderEventEditor();
